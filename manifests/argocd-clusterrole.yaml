@@ -4,5 +4,5 @@ metadata:
   name: argocd-cluster-role
 rules:
   - apiGroups: [""]
-    resources: ["pods", "services", "deployments", "replicasets", "namespaces"]
+    resources: ["pods", "services", "deployments", "replicasets", "namespaces", "limitranges"]
     verbs: ["get", "list", "watch", "create", "update", "delete", "patch"]
