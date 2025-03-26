@@ -8,7 +8,6 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: tech-stack-pv
-  namespace: tech-stack
 spec:
   capacity:
     storage: 10Gi
@@ -55,6 +54,13 @@ spec:
           volumeMounts:
             - mountPath: "/var/www/html"
               name: tech-stack-storage
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
       volumes:
         - name: tech-stack-storage
           persistentVolumeClaim:
