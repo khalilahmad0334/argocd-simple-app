@@ -1,0 +1,93 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tech-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: tech-stack-pv
+  namespace: tech-stack
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: tech-stack-sc
+  hostPath:
+    path: "/mnt/k8s-storage/tech-stack"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tech-stack-pvc
+  namespace: tech-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: tech-stack-sc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tech-stack-deployment
+  namespace: tech-stack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tech-stack
+  template:
+    metadata:
+      labels:
+        app: tech-stack
+    spec:
+      containers:
+        - name: tech-stack-container
+          image: your-tech-stack-image:latest
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - mountPath: "/var/www/html"
+              name: tech-stack-storage
+      volumes:
+        - name: tech-stack-storage
+          persistentVolumeClaim:
+            claimName: tech-stack-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tech-stack-service
+  namespace: tech-stack
+spec:
+  selector:
+    app: tech-stack
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tech-stack-ingress
+  namespace: tech-stack
+spec:
+  rules:
+    - host: tech-stack.yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tech-stack-service
+                port:
+                  number: 80
