@@ -4,33 +4,115 @@ kind: Namespace
 metadata:
   name: tech-stack
 ---
+# Persistent Volume for MySQL
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: tech-stack-pv
+  name: mysql-pv
+  namespace: tech-stack
 spec:
   capacity:
-    storage: 10Gi
+    storage: 5Gi
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: tech-stack-sc
+  storageClassName: mysql-sc
   hostPath:
-    path: "/mnt/k8s-storage/tech-stack"
+    path: "/mnt/k8s-storage/mysql"
 ---
+# Persistent Volume Claim for MySQL
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: tech-stack-pvc
+  name: mysql-pvc
   namespace: tech-stack
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   resources:
     requests:
-      storage: 10Gi
-  storageClassName: tech-stack-sc
+      storage: 5Gi
+  storageClassName: mysql-sc
 ---
+# Secret for MySQL Credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: tech-stack
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: cGFzc3dvcmQ=  # base64-encoded "password"
+  MYSQL_DATABASE: dGVjaHN0YWNr     # base64-encoded "techstack"
+  MYSQL_USER: dXNlcm5hbWU=         # base64-encoded "username"
+  MYSQL_PASSWORD: cGFzc3dvcmQ=      # base64-encoded "password"
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: tech-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_PASSWORD
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: tech-stack
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  type: ClusterIP
+---
+# Tech Stack Application Deployment (Updated to connect with MySQL)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -49,23 +131,35 @@ spec:
       containers:
         - name: tech-stack-container
           image: your-tech-stack-image:latest
+          env:
+            - name: DB_HOST
+              value: mysql-service
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_DATABASE
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_PASSWORD
           ports:
             - containerPort: 80
           volumeMounts:
             - mountPath: "/var/www/html"
               name: tech-stack-storage
-          resources:
-            requests:
-              cpu: "500m"
-              memory: "512Mi"
-            limits:
-              cpu: "1"
-              memory: "1Gi"
       volumes:
         - name: tech-stack-storage
           persistentVolumeClaim:
             claimName: tech-stack-pvc
 ---
+# Tech Stack Application Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -80,6 +174,7 @@ spec:
       targetPort: 80
   type: ClusterIP
 ---
+# Ingress for the Tech Stack Application
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -97,3 +192,27 @@ spec:
                 name: tech-stack-service
                 port:
                   number: 80
+---
+# RBAC Role for ArgoCD
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: tech-stack
+  name: tech-stack-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "persistentvolumeclaims", "events", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+---
+# RBAC RoleBinding for ArgoCD
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tech-stack-rolebinding
+  namespace: tech-stack
